@@ -40,22 +40,18 @@ You have access to tools that can help solve equations and look up formulas. Use
             self.formula_lookup
         ]
         
-        # Create combined tool schema for Google's function calling format
-        self.tools_config = {
-            "function_declarations": []
-        }
+        # For deployment compatibility, don't pre-configure tools
+        # We'll initialize the model without tools and add them at runtime
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
         
-        # Combine all tool schemas into a single config
+        # Store tool information for logging and runtime use
+        self.function_declarations = []
         for tool in self.tools:
-            tool_schema = tool.get_schema()
-            if "function_declarations" in tool_schema and len(tool_schema["function_declarations"]) > 0:
-                self.tools_config["function_declarations"].extend(tool_schema["function_declarations"])
-        
-        # Configure model with tool calling
-        self.model = genai.GenerativeModel(
-            'gemini-2.0-flash',
-            tools=[self.tools_config]
-        )
+            if hasattr(tool, 'name') and hasattr(tool, 'description'):
+                self.function_declarations.append({
+                    "name": tool.name,
+                    "description": tool.description
+                })
         
         self.math_keywords = [
             "math", "mathematics", "algebra", "geometry", "calculus", "arithmetic",
@@ -108,53 +104,68 @@ You have access to tools that can help solve equations and look up formulas. Use
             system_prompt = f"{self.get_system_prompt()}\n\nAvailable tools:\n{tools_info}"
             user_prompt = self._prepare_prompt_with_context(task)
             
-            # Log available tools from function declarations
-            tool_names = [func_decl["name"] for func_decl in self.tools_config["function_declarations"]]
+            # Log available tools
+            tool_names = [func_decl["name"] for func_decl in self.function_declarations]
             self.agent_logger.log_tool_schemas([{"name": name} for name in tool_names])
             self.agent_logger.log_gemini_request(user_prompt)
             
-            # Generate content with tool calling enabled
-            response = self.model.generate_content(
-                user_prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.2
-                )
-            )
+            # For deployment compatibility, handle tool calling manually
+            # Let's first try to detect if this is a math problem that needs a tool
+            needs_equation_solver = "solve" in task.query.lower() and any(x in task.query.lower() for x in ["equation", "="])
+            needs_formula_lookup = "formula" in task.query.lower() or "what is the formula" in task.query.lower()
             
-            # Check for function calls
-            function_calls = []
-            final_response = ""
-            used_tools = []
+            # Call appropriate tool directly if needed
+            tool_result = None
+            tool_name = None
+            tool_args = {}
             
-            if hasattr(response, 'candidates') and response.candidates:
-                for candidate in response.candidates:
-                    if hasattr(candidate, 'content') and candidate.content:
-                        for part in candidate.content.parts:
-                            if hasattr(part, 'function_call') and part.function_call:
-                                # Extract function call details
-                                function_call = part.function_call
-                                function_calls.append(function_call)
-                                tool_name = function_call.name
-                                args = function_call.args
-                                
-                                # Log the function call
-                                self.agent_logger.log_function_call_detected(tool_name, args)
-                                
-                                # Execute the tool
-                                tool_result = self._execute_tool(tool_name, args)
-                                used_tools.append(tool_name)
-                                
-                                # Log the tool result
-                                self.agent_logger.log_tool_call(tool_name, args, tool_result.result)
-                                
-                                # Process the tool result with the model
-                                final_response = self._process_tool_result(task.query, function_call, tool_result)
-                            elif hasattr(part, 'text') and part.text:
-                                # If there's regular text, use it
-                                final_response = part.text
+            if needs_equation_solver:
+                tool_name = "equation_solver"
+                # Extract the equation from the query
+                equation = task.query
+                # Remove "solve" and "equation" words
+                equation = equation.lower().replace("solve", "").replace("equation", "").strip()
+                # Remove "what is x in" or similar phrases
+                if "what is" in equation:
+                    equation = equation.split("what is")[1].strip()
+                if "x in" in equation:
+                    equation = equation.split("x in")[1].strip()
+                
+                tool_args = {"equation": equation}
+                tool_result = self._execute_tool(tool_name, tool_args)
+                
+            elif needs_formula_lookup:
+                tool_name = "formula_lookup"
+                # Extract the formula name from the query
+                formula_query = task.query.lower()
+                if "quadratic" in formula_query:
+                    query = "quadratic_formula"
+                elif "kinetic energy" in formula_query:
+                    query = "kinetic_energy"
+                elif "circle" in formula_query and "area" in formula_query:
+                    query = "area_circle"
+                elif "pythagorean" in formula_query:
+                    query = "pythagorean_theorem"
+                else:
+                    # Just pass the whole query if we can't identify a specific formula
+                    query = formula_query
+                
+                tool_args = {"query": query}
+                tool_result = self._execute_tool(tool_name, tool_args)
+            
+            # If we used a tool, process the result
+            if tool_result:
+                final_response = self._process_tool_result_basic(task.query, tool_name, tool_args, tool_result)
             else:
-                # If no function calls detected, use the original response text
+                # Otherwise, use the model normally
+                response = self.model.generate_content(user_prompt)
                 final_response = response.text
+            
+            # Determine which tools were used for metadata
+            used_tools = []
+            if tool_name and tool_result and tool_result.success:
+                used_tools.append(tool_name)
+                self.agent_logger.log_tool_call(tool_name, tool_args, tool_result.result)
             
             self.agent_logger.log_gemini_response(final_response)
             
@@ -166,8 +177,8 @@ You have access to tools that can help solve equations and look up formulas. Use
                 "agent": "Math Tutor",
                 "flow_id": flow_id,
                 "tools_available": self.get_available_tools(),
-                "tools_used": [fc.name for fc in function_calls] if function_calls else [],
-                "tool_calls_count": len(function_calls)
+                "tools_used": used_tools,
+                "tool_calls_count": len(used_tools)
             }
             
             return AgentResponse(
@@ -206,11 +217,12 @@ You have access to tools that can help solve equations and look up formulas. Use
             error=f"Tool '{tool_name}' not found"
         )
     
-    def _process_tool_result(self, query: str, function_call: Any, tool_result: ToolResult) -> str:
+    def _process_tool_result_basic(self, query: str, tool_name: str, tool_args: Dict[str, Any], tool_result: ToolResult) -> str:
         """
         Process the tool result with the model to generate a final response.
+        Simplified version for better deployment compatibility.
         """
-        # Create a regular model (without tools) to avoid infinite tool calls
+        # Create a regular model (without tools) to avoid issues
         processing_model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Format the result in a readable way
@@ -225,8 +237,8 @@ You have access to tools that can help solve equations and look up formulas. Use
         tool_output_prompt = f"""
 You are a Math Tutor helping a student with the question: "{query}".
 
-To solve this problem, you used the tool "{function_call.name}" 
-with arguments: {function_call.args}
+To solve this problem, you used the tool "{tool_name}" 
+with arguments: {tool_args}
 
 The tool returned this result: {result_str}
 
@@ -245,6 +257,6 @@ Your goal is to help the student understand both the process and the answer.
             return result_response.text
         except Exception as e:
             # Fallback if there's an error
-            return f"I found the answer to your question using my equation solver. The result is: {result_str}. Let me know if you need further explanation!"
+            return f"I found the answer to your question using my {tool_name}. The result is: {result_str}. Let me know if you need further explanation!"
 
 # End of MathAgent

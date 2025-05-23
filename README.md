@@ -1,6 +1,6 @@
 # 🤖 Multi-Agent AI Tutor System
 
-A smart AI tutoring system with specialized agents for different subjects, powered by Google Gemini. The system uses a coordinator agent that intelligently routes questions to specialist agents (Math, Physics) which can utilize tools like equation solvers and formula lookups to provide accurate, educational responses.
+A smart AI tutoring system with specialized agents for different subjects, powered by Google Gemini. The system uses a coordinator agent that intelligently routes questions to specialist agents (Math, Physics) which can utilize tools like equation solvers and formula lookups to provide accurate, educational responses. With session-based context history, the system maintains conversation memory for more personalized and coherent multi-turn interactions.
 
 ## 🧠 System Architecture
 
@@ -22,6 +22,7 @@ graph TD
 
 - **🧠 Intelligent Routing**: Automatically directs questions to the right specialist
 - **🔧 Tool Integration**: Uses specialized tools for solving equations and looking up formulas
+- **💬 Context History**: Maintains conversation memory for continuous, coherent interactions
 - **🚀 Fast & Efficient**: Optimized for quick responses and low latency
 - **🌐 Production Ready**: Deployed on Vercel for reliable access
 
@@ -59,6 +60,8 @@ Key environment variables:
 | `/ask` | POST | Main endpoint - routes to appropriate specialist |
 | `/ask/{agent_type}` | POST | Direct access to specific agent (math/physics) |
 | `/agents` | GET | List available specialist agents |
+| `/session/{session_id}` | GET | Get information about a specific session |
+| `/session/clear/{session_id}` | POST | Clear history for a specific session |
 | `/health` | GET | System health check |
 
 ### Example Usage
@@ -69,6 +72,11 @@ curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
   -H "Content-Type: application/json" \
   -d '{"query": "Solve 2x + 5 = 15"}'
 
+# Continue conversation with context (using returned session_id)
+curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Now explain how you solved it", "session_id": "a1b2c3d4-e5f6"}'
+
 # Ask math specialist directly
 curl -X POST "https://multi-agent-tutor.vercel.app/ask/math" \
   -H "Content-Type: application/json" \
@@ -78,6 +86,11 @@ curl -X POST "https://multi-agent-tutor.vercel.app/ask/math" \
 curl -X POST "https://multi-agent-tutor.vercel.app/ask/physics" \
   -H "Content-Type: application/json" \
   -d '{"query": "What is the formula for kinetic energy?"}'
+
+# Disable context history if needed
+curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is 2+2?", "use_context_history": false}'
 ```
 
 ## 🧠 User Journey
@@ -86,13 +99,16 @@ curl -X POST "https://multi-agent-tutor.vercel.app/ask/physics" \
 sequenceDiagram
     actor User
     participant API as API Endpoint
+    participant Session as Session Manager
     participant Tutor as Tutor Agent
     participant Math as Math Agent
     participant Physics as Physics Agent
     participant Tools as Specialized Tools
     
     User->>API: Asks a question
-    API->>Tutor: Routes request
+    API->>Session: Retrieves context history
+    Session-->>API: Returns conversation history
+    API->>Tutor: Routes request with context
     
     alt Math Question
         Tutor->>Math: Delegates to Math Agent
@@ -106,7 +122,10 @@ sequenceDiagram
         Physics-->>API: Provides educational response
     end
     
+    API->>Session: Stores interaction
     API-->>User: Delivers formatted answer
+    
+    Note over User,Session: Subsequent questions maintain context
 ```
 
 ## 🧩 System Components
@@ -121,6 +140,12 @@ sequenceDiagram
 
 - **⚖️ Equation Solver**: Solves algebraic equations step-by-step
 - **📚 Formula Lookup**: Retrieves mathematical and physics formulas
+
+### Session Management
+
+- **💬 Context History**: Maintains conversation memory across interactions
+- **🌐 Session Tracking**: Uses unique session IDs to manage conversations
+- **⏰ Session Expiry**: Automatically expires inactive sessions after 1 hour
 
 ### Technical Implementation
 
@@ -142,6 +167,29 @@ To solve 3x + 7 = 22:
 2. Divide both sides by 3: x = 5
 
 Therefore, x = 5 is the solution.
+```
+
+### Multi-turn Conversation with Context
+
+**First Input**: "What is kinetic energy?"
+
+**Response**:
+```
+Kinetic energy is the energy an object possesses due to its motion. 
+It's calculated using the formula KE = ½mv², where m is mass and v is velocity.
+```
+
+**Second Input**: "Can you explain the formula in more detail?" (using same session_id)
+
+**Response**:
+```
+Certainly! Looking at the kinetic energy formula KE = ½mv²:
+
+- The ½ is a constant factor in the equation
+- m represents mass in kilograms (kg)
+- v² means velocity squared in (m/s)²
+
+The squared velocity term means that doubling the speed quadruples the kinetic energy!
 ```
 
 ### Physics Concepts
@@ -179,6 +227,20 @@ curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
 curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
   -H "Content-Type: application/json" \
   -d '{"query": "What is Newton's second law?"}'
+
+# Test context memory (multi-turn conversation)
+curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Solve x^2 - 9 = 0"}' > response.json
+
+SESSION_ID=$(grep -o '"session_id":"[^"]*"' response.json | cut -d':' -f2 | tr -d '"')
+
+curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
+  -H "Content-Type: application/json" \
+  -d "{\"query\": \"Why did you factor it that way?\", \"session_id\": \"$SESSION_ID\"}"
+
+# Get session information
+curl "https://multi-agent-tutor.vercel.app/session/$SESSION_ID"
 ```
 
 ---

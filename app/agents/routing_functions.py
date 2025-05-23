@@ -13,7 +13,7 @@ def get_routing_function_declarations() -> List[Dict[str, Any]]:
     return [
         {
             "name": "route_to_math_agent",
-            "description": "Route the query to the Math Agent for mathematical problems including algebra, geometry, calculus, arithmetic, equations, and calculations",
+            "description": "Route the query to the Math Agent for mathematical problems including algebra, geometry, calculus, arithmetic, and general math questions. The Math Agent will provide explanations and solutions.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -31,7 +31,7 @@ def get_routing_function_declarations() -> List[Dict[str, Any]]:
         },
         {
             "name": "route_to_physics_agent", 
-            "description": "Route the query to the Physics Agent for physics problems including mechanics, electricity, magnetism, thermodynamics, forces, energy, and physics concepts",
+            "description": "Route the query to the Physics Agent for physics problems including mechanics, electricity, magnetism, thermodynamics, forces, energy, and general physics concepts. The Physics Agent will provide explanations and insights.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -49,7 +49,7 @@ def get_routing_function_declarations() -> List[Dict[str, Any]]:
         },
         {
             "name": "handle_general_query",
-            "description": "Handle the query directly as a general tutor for non-specialized topics like history, literature, general knowledge, or mixed subjects",
+            "description": "Handle the query directly as a general tutor for non-specialized topics like history, literature, general knowledge, or mixed subjects. The general tutor will provide a comprehensive answer.",
             "parameters": {
                 "type": "object", 
                 "properties": {
@@ -72,17 +72,17 @@ def get_routing_system_prompt() -> str:
     Get the system prompt for the routing decision.
     This prompt guides Gemini in making intelligent routing decisions.
     """
-    return """You are an AI Tutor Coordinator responsible for intelligently routing student queries to the most appropriate specialist agent.
+    return """You are an AI Tutor Coordinator responsible for intelligently routing student queries to the most appropriate specialist agent or handling them directly.
 
 Your role is to analyze incoming queries and decide whether they should be:
-1. Routed to the Math Agent (for mathematical problems, equations, calculations)
-2. Routed to the Physics Agent (for physics concepts, forces, energy, circuits, etc.)  
+1. Routed to the Math Agent (for mathematical problems, equations, concepts)
+2. Routed to the Physics Agent (for physics concepts, principles, problems)  
 3. Handled directly as a general tutor (for other subjects or mixed topics)
 
 Guidelines for routing decisions:
-- Math Agent: Use for algebra, geometry, calculus, arithmetic, equations, mathematical formulas, graphing, statistics
-- Physics Agent: Use for mechanics, electricity, magnetism, thermodynamics, forces, energy, motion, waves, optics
-- General handling: Use for history, literature, biology, chemistry, social sciences, or queries that span multiple subjects
+- Math Agent: Use for questions related to algebra, geometry, calculus, arithmetic, mathematical concepts. The Math Agent will explain and help solve these.
+- Physics Agent: Use for questions related to mechanics, electricity, magnetism, thermodynamics, forces, energy, motion, waves, optics, and other physics topics. The Physics Agent will explain these concepts.
+- General handling: Use for history, literature, biology, chemistry, social sciences, or queries that span multiple subjects, or if unsure. The general tutor will provide an answer.
 
 Always use the appropriate function to route the query and provide your reasoning for the decision.
-Be decisive - every query must be routed somewhere. When in doubt, consider which specialist would be most helpful.""" 
+Be decisive - every query must be routed. When in doubt about specialization, opt for general handling.""" 

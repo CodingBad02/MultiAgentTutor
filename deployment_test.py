@@ -43,10 +43,10 @@ def test_deployment(base_url):
     except Exception as e:
         print(f"❌ Root endpoint error: {e}")
     
-    # Test 3: Math Agent - Equation Solving
-    print("\n3️⃣ Testing Math Agent (Equation Solving)...")
+    # Test 3: Math Agent Query (via /ask endpoint)
+    print("\n3️⃣ Testing Math Agent Query...")
     try:
-        payload = {"query": "Solve 2x + 5 = 15"}
+        payload = {"query": "Solve 2x + 5 = 15 for x"}
         response = requests.post(
             f"{base_url}/ask", 
             json=payload, 
@@ -55,17 +55,11 @@ def test_deployment(base_url):
         )
         if response.status_code == 200:
             data = response.json()
-            print("✅ Math equation solving passed")
+            print("✅ Math query test passed")
             print(f"   Agent: {data.get('agent_used', 'unknown')}")
             print(f"   Confidence: {data.get('confidence', 0)}")
             print(f"   Execution time: {data.get('execution_time_ms', 0):.0f}ms")
-            
-            # Check if tools were used
-            if "equation_solver" in data.get('answer', '').lower():
-                print("✅ Tool usage detected!")
-            else:
-                print("⚠️ Tool usage not clearly detected")
-                
+            # Removed specific tool usage check
             print(f"   Answer preview: {data.get('answer', '')[:150]}...")
         else:
             print(f"❌ Math test failed: {response.status_code}")
@@ -73,10 +67,10 @@ def test_deployment(base_url):
     except Exception as e:
         print(f"❌ Math test error: {e}")
     
-    # Test 4: Physics Agent - Formula Lookup
-    print("\n4️⃣ Testing Physics Agent (Formula Lookup)...")
+    # Test 4: Physics Agent Query (via /ask endpoint)
+    print("\n4️⃣ Testing Physics Agent Query...")
     try:
-        payload = {"query": "What is the formula for kinetic energy?"}
+        payload = {"query": "Explain kinetic energy."}
         response = requests.post(
             f"{base_url}/ask", 
             json=payload, 
@@ -85,17 +79,11 @@ def test_deployment(base_url):
         )
         if response.status_code == 200:
             data = response.json()
-            print("✅ Physics formula lookup passed")
+            print("✅ Physics query test passed")
             print(f"   Agent: {data.get('agent_used', 'unknown')}")
             print(f"   Confidence: {data.get('confidence', 0)}")
             print(f"   Execution time: {data.get('execution_time_ms', 0):.0f}ms")
-            
-            # Check if tools were used
-            if "formula_lookup" in data.get('answer', '').lower():
-                print("✅ Tool usage detected!")
-            else:
-                print("⚠️ Tool usage not clearly detected")
-                
+            # Removed specific tool usage check
             print(f"   Answer preview: {data.get('answer', '')[:150]}...")
         else:
             print(f"❌ Physics test failed: {response.status_code}")
@@ -126,7 +114,7 @@ def test_deployment(base_url):
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python deployment_test.py <your-deployed-url>")
-        print("Example: python deployment_test.py https://your-app.railway.app")
+        print("Example: python deployment_test.py https://your-app.onrender.com") # Example URL updated
         sys.exit(1)
     
     base_url = sys.argv[1].rstrip('/')

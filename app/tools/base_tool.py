@@ -29,11 +29,14 @@ class BaseTool(ABC):
     def get_schema(self) -> Dict[str, Any]:
         """
         Return the tool's parameter schema for LLM function calling.
+        Format compatible with Google's GenerativeAI SDK.
         """
         return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self._get_parameters_schema()
+            "function_declarations": [{
+                "name": self.name,
+                "description": self.description,
+                "parameters": self._get_parameters_schema()
+            }]
         }
     
     @abstractmethod

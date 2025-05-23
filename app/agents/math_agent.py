@@ -1,57 +1,62 @@
 # app/agents/math_agent.py
 import re
 import time
-from typing import List
+from typing import List, Dict, Any
 from .base_agent import BaseAgent, TaskRequest, AgentResponse
-from ..tools.calculator_tool import CalculatorTool
+from ..utils.logger import AgentLogger
+import google.generativeai as genai
+import google.generativeai.types as gapic_types
 from ..tools.equation_solver_tool import EquationSolverTool
 from ..tools.formula_lookup_tool import FormulaLookupTool
-from ..utils.logger import AgentLogger
-import google.generativeai.types as gapic_types
+from ..tools.base_tool import ToolResult
 
 
 class MathAgent(BaseAgent):
     """
-    Specialized agent for mathematics tutoring following Google ADK patterns.
-    Handles algebra, geometry, calculus, and arithmetic problems with tool integration.
+    Specialized agent for mathematics tutoring.
+    Handles algebra, geometry, calculus, and arithmetic problems.
     """
     
     def __init__(self):
         super().__init__(
             name="Math Tutor",
-            description="I am a specialized mathematics tutor with expertise in algebra, geometry, calculus, arithmetic, and mathematical problem-solving. I can solve equations, perform calculations, look up formulas, and explain mathematical concepts step by step.",
+            description="I am a specialized mathematics tutor with expertise in algebra, geometry, calculus, arithmetic, and mathematical problem-solving. I explain mathematical concepts step by step.",
             instruction="""You are a specialized Math Tutor agent. Your primary role is to help students understand and solve mathematical problems.
+Explain concepts clearly and provide step-by-step solutions.
+Focus on education and understanding.
 
-
-CRITICAL TOOL USAGE INSTRUCTIONS:
-- For ANY equation with variables (like "solve 2x + 5 = 15" or "find x if x - 3 = 7"), you MUST use the "equation_solver" tool
-- For numerical calculations and expressions, use the "calculator" tool
-- For looking up mathematical formulas or constants, use the "formula_lookup" tool
-
-TOOL USAGE PRIORITY:
-1. If the problem contains an equation with variables (=, x, y), immediately use equation_solver
-2. If it requires numerical computation, use calculator
-3. If you need a formula or constant, use formula_lookup
-
-When solving problems:
-1. Identify what type of problem it is
-2. IMMEDIATELY use the appropriate tool(s) - don't try to solve manually first
-3. Explain the reasoning behind each step
-4. Verify your answers when possible
-5. Relate concepts to real-world applications when relevant
-
-Always aim to educate, not just provide answers. Show your work and explain your reasoning, including why you chose specific tools."""
+You have access to tools that can help solve equations and look up formulas. Use these tools when appropriate to provide accurate answers."""
         )
         
-        # Add math-specific tools
-        self.add_tool(CalculatorTool())
-        self.add_tool(EquationSolverTool()) 
-        self.add_tool(FormulaLookupTool())
-        
-        # Set up logging
         self.agent_logger = AgentLogger("Math Tutor")
         
-        # Keywords for basic confidence scoring (still useful as fallback)
+        # Initialize tools
+        self.equation_solver = EquationSolverTool()
+        self.formula_lookup = FormulaLookupTool()
+        
+        # Register tools
+        self.tools = [
+            self.equation_solver,
+            self.formula_lookup
+        ]
+        
+        # Create combined tool schema for Google's function calling format
+        self.tools_config = {
+            "function_declarations": []
+        }
+        
+        # Combine all tool schemas into a single config
+        for tool in self.tools:
+            tool_schema = tool.get_schema()
+            if "function_declarations" in tool_schema and len(tool_schema["function_declarations"]) > 0:
+                self.tools_config["function_declarations"].extend(tool_schema["function_declarations"])
+        
+        # Configure model with tool calling
+        self.model = genai.GenerativeModel(
+            'gemini-2.0-flash',
+            tools=[self.tools_config]
+        )
+        
         self.math_keywords = [
             "math", "mathematics", "algebra", "geometry", "calculus", "arithmetic",
             "equation", "solve", "calculate", "compute", "formula", "derivative",
@@ -64,126 +69,113 @@ Always aim to educate, not just provide answers. Show your work and explain your
     def can_handle(self, query: str) -> float:
         """
         Determine if this agent can handle the math query.
-        This is used as a fallback - primary routing is now done by Gemini.
         """
         query_lower = query.lower()
-        
-        # Check for math keywords
         keyword_score = sum(1 for keyword in self.math_keywords if keyword in query_lower)
-        
-        # Check for mathematical symbols and patterns
         math_patterns = [
-            r'\d+\s*[\+\-\*\/\^]\s*\d+',  # Basic arithmetic
-            r'[xy]\s*[\+\-\*\/]\s*\d+',   # Variables with numbers
-            r'=',                         # Equations
-            r'[xy]\^?\d*',               # Variables with exponents
-            r'sin|cos|tan|log|ln|sqrt',  # Math functions
-            r'∫|∑|∆|π|θ|α|β|γ',         # Math symbols
+            r'\d+\s*[\+\-\*\/\^]\s*\d+',
+            r'[xy]\s*[\+\-\*\/]\s*\d+',
+            r'=',
+            r'[xy]\^?\d*',
+            r'sin|cos|tan|log|ln|sqrt',
+            r'∫|∑|∆|π|θ|α|β|γ',
         ]
-        
         pattern_score = sum(1 for pattern in math_patterns if re.search(pattern, query_lower))
-        
-        # Combine scores with higher weight on patterns
         total_score = (keyword_score * 0.3) + (pattern_score * 0.7)
-        
-        # Normalize to 0-1 range
         max_possible_score = len(self.math_keywords) * 0.3 + len(math_patterns) * 0.7
         confidence = min(total_score / max_possible_score, 1.0) if max_possible_score > 0 else 0.0
-        
-        # Boost confidence for clear math queries
         if any(word in query_lower for word in ["solve", "calculate", "compute", "equation", "formula"]):
             confidence = min(confidence + 0.3, 1.0)
-        
         return confidence
     
+    def get_available_tools(self) -> List[str]:
+        """
+        Get list of available tool names.
+        """
+        return [tool.name for tool in self.tools]
+        
     def process_task(self, task: TaskRequest) -> AgentResponse:
         """
-        Process a mathematics task using Gemini with function calling for tools.
+        Process a mathematics task using LLM with tool calling.
         """
         start_time = time.time()
-        
-        # Log agent start
         self.agent_logger.log_agent_start(task.query)
+        flow_id = self.agent_logger.flow_id
         
         try:
-            # Get tool schemas for function calling
-            tool_schemas = self.get_tool_schemas() if self.tools else []
-            self.agent_logger.log_tool_schemas(tool_schemas)
-            
-            # Prepare the conversation
-            system_prompt = self.get_system_prompt()
+            # Add tool information to the system prompt
+            tools_info = "\n".join([f"- {tool.name}: {tool.description}" for tool in self.tools])
+            system_prompt = f"{self.get_system_prompt()}\n\nAvailable tools:\n{tools_info}"
             user_prompt = self._prepare_prompt_with_context(task)
             
-            full_prompt = f"{system_prompt}\n\n{user_prompt}"
-            self.agent_logger.log_gemini_request(full_prompt)
+            # Log available tools from function declarations
+            tool_names = [func_decl["name"] for func_decl in self.tools_config["function_declarations"]]
+            self.agent_logger.log_tool_schemas([{"name": name} for name in tool_names])
+            self.agent_logger.log_gemini_request(user_prompt)
             
-            if tool_schemas:
-                # Use function calling with tools
-                self.agent_logger.logger.info("🔧 Using Gemini with function calling")
-                
-                try:
-                    # Create tools configuration using explicit types
-                    function_declarations = [gapic_types.FunctionDeclaration(**schema) for schema in tool_schemas]
-                    # Ensure we only create a Tool if there are declarations
-                    tools_list = [gapic_types.Tool(function_declarations=function_declarations)] if function_declarations else []
-                    
-                    # Make the API call with proper tools configuration
-                    response = self.model.generate_content(
-                        full_prompt,
-                        tools=tools_list
-                    )
-                    
-                    # Log the raw response structure
-                    self.agent_logger.logger.info(f"📋 Response candidates: {len(response.candidates) if response.candidates else 0}")
-                    if response.candidates and response.candidates[0].content.parts:
-                        self.agent_logger.logger.info(f"📋 Response parts: {len(response.candidates[0].content.parts)}")
-                    
-                    # Process function calls if any
-                    final_response = self._process_function_calls(response, task)
-                    
-                except Exception as tools_error:
-                    self.agent_logger.log_error(tools_error, "using tools with Gemini")
-                    # Fallback to no tools if there's an issue
-                    self.agent_logger.logger.warning("🔄 Falling back to no-tools mode")
-                    response = self.model.generate_content(full_prompt)
-                    final_response = response.text
-                    self.agent_logger.log_gemini_response(final_response)
-                    
-                    execution_time = (time.time() - start_time) * 1000
-                    return AgentResponse(
-                        content=final_response,
-                        confidence=0.7,  # Lower confidence without tools
-                        sources=["Math Agent", "Gemini 2.0 Flash"],
-                        execution_time_ms=execution_time,
-                        metadata={
-                            "agent": "Math Agent",
-                            "tools_available": self.get_available_tools(),
-                            "tools_error": str(tools_error),
-                            "fallback_mode": True
-                        }
-                    )
+            # Generate content with tool calling enabled
+            response = self.model.generate_content(
+                user_prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.2
+                )
+            )
+            
+            # Check for function calls
+            function_calls = []
+            final_response = ""
+            used_tools = []
+            
+            if hasattr(response, 'candidates') and response.candidates:
+                for candidate in response.candidates:
+                    if hasattr(candidate, 'content') and candidate.content:
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'function_call') and part.function_call:
+                                # Extract function call details
+                                function_call = part.function_call
+                                function_calls.append(function_call)
+                                tool_name = function_call.name
+                                args = function_call.args
+                                
+                                # Log the function call
+                                self.agent_logger.log_function_call_detected(tool_name, args)
+                                
+                                # Execute the tool
+                                tool_result = self._execute_tool(tool_name, args)
+                                used_tools.append(tool_name)
+                                
+                                # Log the tool result
+                                self.agent_logger.log_tool_call(tool_name, args, tool_result.result)
+                                
+                                # Process the tool result with the model
+                                final_response = self._process_tool_result(task.query, function_call, tool_result)
+                            elif hasattr(part, 'text') and part.text:
+                                # If there's regular text, use it
+                                final_response = part.text
             else:
-                # Fallback without tools
-                self.agent_logger.logger.info("🔧 Using Gemini without tools (fallback)")
-                response = self.model.generate_content(full_prompt)
+                # If no function calls detected, use the original response text
                 final_response = response.text
-                self.agent_logger.log_gemini_response(final_response)
             
-            execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+            self.agent_logger.log_gemini_response(final_response)
             
-            # Log completion
-            self.agent_logger.log_agent_complete(execution_time, 0.9)
+            execution_time = (time.time() - start_time) * 1000
+            self.agent_logger.log_agent_complete(execution_time, 0.85)
+            
+            # Create metadata about tool usage
+            metadata = {
+                "agent": "Math Tutor",
+                "flow_id": flow_id,
+                "tools_available": self.get_available_tools(),
+                "tools_used": [fc.name for fc in function_calls] if function_calls else [],
+                "tool_calls_count": len(function_calls)
+            }
             
             return AgentResponse(
                 content=final_response,
-                confidence=0.9,  # High confidence for math problems
-                sources=["Math Agent", "Gemini 2.0 Flash"],
+                confidence=0.85,
+                sources=["Math Tutor", "Gemini 2.0 Flash"] + (used_tools if used_tools else []),
                 execution_time_ms=execution_time,
-                metadata={
-                    "agent": "Math Agent",
-                    "tools_available": self.get_available_tools(),
-                    "system_prompt": system_prompt[:200] + "..." if len(system_prompt) > 200 else system_prompt
-                }
+                metadata=metadata
             )
             
         except Exception as e:
@@ -191,141 +183,68 @@ Always aim to educate, not just provide answers. Show your work and explain your
             self.agent_logger.log_error(e, "processing math task")
             
             return AgentResponse(
-                content=f"I encountered an error while processing your math question: {str(e)}. Please try rephrasing your question.",
+                content=f"I encountered an error while trying to help with your math question: {str(e)}. Please try rephrasing.",
                 confidence=0.1,
                 execution_time_ms=execution_time,
-                metadata={"error": str(e), "agent": "Math Agent"}
+                metadata={"error": str(e), "agent": "Math Tutor", "flow_id": flow_id}
             )
+
+    # Removed _process_function_calls method
+    # System prompt is now inherited from BaseAgent or can be overridden if needed
+    # For now, relying on the simplified BaseAgent.get_system_prompt
+    def _execute_tool(self, tool_name: str, args: Dict[str, Any]) -> ToolResult:
+        """
+        Execute a tool by name with the provided arguments.
+        """
+        for tool in self.tools:
+            if tool.name == tool_name:
+                return tool.execute(**args)
+        
+        return ToolResult(
+            success=False,
+            result=None,
+            error=f"Tool '{tool_name}' not found"
+        )
     
-    def _process_function_calls(self, response, task: TaskRequest) -> str:
+    def _process_tool_result(self, query: str, function_call: Any, tool_result: ToolResult) -> str:
         """
-        Process any function calls made by Gemini and return the final response.
+        Process the tool result with the model to generate a final response.
         """
-        if not response.candidates or not response.candidates[0].content.parts:
-            self.agent_logger.logger.warning("⚠️ No response parts found")
-            return "I couldn't process your request properly. Please try again."
+        # Create a regular model (without tools) to avoid infinite tool calls
+        processing_model = genai.GenerativeModel('gemini-2.0-flash')
         
-        response_parts = []
-        function_calls_made = []
+        # Format the result in a readable way
+        result_str = str(tool_result.result)
+        if isinstance(tool_result.result, dict):
+            try:
+                result_str = "\n".join([f"{k}: {v}" for k, v in tool_result.result.items()])
+            except:
+                pass
         
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, 'text') and part.text:
-                response_parts.append(part.text)
-                self.agent_logger.logger.info(f"📝 Text part: {part.text[:100]}...")
-            
-            elif hasattr(part, 'function_call') and part.function_call:
-                # Execute the function call
-                func_call = part.function_call
-                func_name = func_call.name
-                func_args = dict(func_call.args)
-                
-                self.agent_logger.log_function_call_detected(func_name, func_args)
-                
-                try:
-                    # Execute the tool
-                    tool_result = self.execute_tool(func_name, **func_args)
-                    
-                    self.agent_logger.log_tool_call(func_name, func_args, tool_result.result if tool_result.success else tool_result.error)
-                    
-                    if tool_result.success:
-                        response_parts.append(f"\n[Using {func_name}]: {tool_result.result}")
-                        function_calls_made.append({
-                            "tool": func_name,
-                            "args": func_args,
-                            "result": tool_result.result
-                        })
-                    else:
-                        response_parts.append(f"\n[Tool Error]: {tool_result.error}")
-                        
-                except Exception as e:
-                    self.agent_logger.log_error(e, f"executing tool {func_name}")
-                    response_parts.append(f"\n[Tool Execution Error]: {str(e)}")
-        
-        # Log if no function calls were made but tools were available
-        if not function_calls_made and self.tools:
-            self.agent_logger.logger.warning("⚠️ No function calls made despite tools being available")
-            
-            # Check if this is an equation that should use the equation solver
-            if "=" in task.query and any(var in task.query.lower() for var in ["x", "y", "solve"]):
-                self.agent_logger.logger.info("🔍 Detected equation - manually calling equation solver")
-                try:
-                    # Extract the equation
-                    equation_match = re.search(r'[^=]+=\s*[^=]+', task.query)
-                    if equation_match:
-                        equation = equation_match.group().strip()
-                        tool_result = self.execute_tool("equation_solver", equation=equation)
-                        if tool_result.success:
-                            response_parts.append(f"\n[Manual equation solving]: {equation} → x = {tool_result.result}")
-                            function_calls_made.append({
-                                "tool": "equation_solver",
-                                "args": {"equation": equation},
-                                "result": tool_result.result
-                            })
-                except Exception as e:
-                    self.agent_logger.log_error(e, "manual equation solving")
-        
-        # Combine all parts and send back through Gemini for final formatting
-        raw_response = "\n".join(response_parts)
-        self.agent_logger.logger.info(f"🔄 Function calls made: {len(function_calls_made)}")
-        
-        # Send the response back through Gemini for better formatting and explanation
-        formatting_prompt = f"""Please format and explain this mathematical solution clearly for a student:
+        # Prepare prompt for processing the tool result
+        tool_output_prompt = f"""
+You are a Math Tutor helping a student with the question: "{query}".
 
-Original Question: {task.query}
+To solve this problem, you used the tool "{function_call.name}" 
+with arguments: {function_call.args}
 
-Solution Process: {raw_response}
+The tool returned this result: {result_str}
 
-Tool Results Used: {function_calls_made}
+Based on this tool result, please provide a complete educational response that:
+1. Explains what the tool did
+2. Shows the step-by-step solution
+3. Explains the mathematical concepts involved
+4. Concludes with the final answer
 
-Please provide a clear, step-by-step explanation that helps the student understand both the process and the final answer. Make sure to explain what tools were used and why."""
-
-        try:
-            self.agent_logger.log_gemini_request(formatting_prompt)
-            formatted_response = self.model.generate_content(formatting_prompt)
-            final_content = formatted_response.text
-            self.agent_logger.log_gemini_response(final_content)
-            return final_content
-        except Exception as e:
-            self.agent_logger.log_error(e, "formatting response")
-            # Fallback to raw response if formatting fails
-            return raw_response 
-
-    def get_system_prompt(self) -> str:
-        """
-        Generate the complete system prompt for this agent following ADK patterns.
-        This is the core instruction that defines the agent's behavior.
-        """
-        tools_section = ""
-        if self.tools:
-            tool_descriptions = []
-            for tool in self.tools:
-                tool_descriptions.append(f"- {tool.name}: {tool.description}")
-            tools_section = f"""
-
-Available Tools:
-{chr(10).join(tool_descriptions)}
-
-CRITICAL: You MUST use these tools when appropriate:
-- For ANY equation with variables (like "solve 2x + 5 = 15"), immediately call equation_solver
-- For numerical calculations (like "calculate 2.5 * 8 + sqrt(16)"), immediately call calculator  
-- For formula requests (like "what is the quadratic formula"), immediately call formula_lookup
-
-Do NOT solve equations manually - always use the equation_solver tool for equations with variables.
-Do NOT do complex calculations manually - always use the calculator tool.
-Do NOT recite formulas from memory - always use the formula_lookup tool.
-
-The system will handle the function calling automatically when you call these tools.
+Your goal is to help the student understand both the process and the answer.
 """
+        
+        # Process the tool result with a clean model
+        try:
+            result_response = processing_model.generate_content(tool_output_prompt)
+            return result_response.text
+        except Exception as e:
+            # Fallback if there's an error
+            return f"I found the answer to your question using my equation solver. The result is: {result_str}. Let me know if you need further explanation!"
 
-        return f"""You are {self.name}.
-
-{self.instruction}
-
-{self.description}{tools_section}
-
-Remember to:
-- Use tools IMMEDIATELY when the query requires them (equations → equation_solver, calculations → calculator, formulas → formula_lookup)
-- Provide clear, educational explanations AFTER using tools
-- Show your reasoning step by step
-- Always aim to help the student understand concepts, not just provide answers
-""" 
+# End of MathAgent

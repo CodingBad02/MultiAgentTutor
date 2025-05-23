@@ -84,11 +84,11 @@ async def read_root():
         "message": "Multi-Agent AI Tutor is running!", 
         "version": "2.0.0",
         "features": [
-            "Dynamic Gemini-based routing",
-            "Function calling for tools",
-            "Google ADK patterns",
-            "Execution timing",
-            "Enhanced response formatting"
+            "Dynamic Gemini-based routing to specialist agents",
+            "Function calling for routing decisions by TutorAgent",
+            "Math and Physics specialist tutors",
+            "General knowledge tutor capabilities",
+            "Execution timing"
         ]
     }
 

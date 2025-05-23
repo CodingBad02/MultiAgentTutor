@@ -40,14 +40,8 @@ class AgentRegistry:
     
     def find_best_agent(self, query: str, threshold: float = 0.3) -> Tuple[Optional[BaseAgent], float]:
         """
-        Find the best agent to handle the given query.
-        
-        Args:
-            query: The user's query
-            threshold: Minimum confidence threshold for agent selection
-            
-        Returns:
-            Tuple of (best_agent, confidence_score) or (None, 0.0) if no suitable agent
+        Find the best agent to handle the given query based on their can_handle method.
+        This is a fallback or alternative routing mechanism.
         """
         best_agent = None
         best_confidence = 0.0
@@ -62,33 +56,26 @@ class AgentRegistry:
     
     def get_agent_capabilities(self) -> Dict[str, Dict[str, str]]:
         """
-        Get a summary of all agent capabilities.
+        Get a summary of all agent capabilities (name and description).
         """
         capabilities = {}
         for key, agent in self.agents.items():
             capabilities[key] = {
                 "name": agent.name,
-                "description": agent.description,
-                "tools": agent.get_available_tools()
+                "description": agent.description
             }
         return capabilities
     
     def route_query(self, query: str) -> Tuple[Optional[str], Optional[BaseAgent], float]:
         """
-        Route a query to the most appropriate agent.
-        
-        Returns:
-            Tuple of (agent_key, agent_instance, confidence_score)
+        Route a query to the most appropriate agent using the find_best_agent logic.
+        Returns: Tuple of (agent_key, agent_instance, confidence_score)
         """
         best_agent, confidence = self.find_best_agent(query)
         
         if best_agent:
-            # Find the key for this agent
-            agent_key = None
-            for key, agent in self.agents.items():
-                if agent is best_agent:
-                    agent_key = key
-                    break
-            return agent_key, best_agent, confidence
+            for key, agent_instance in self.agents.items():
+                if agent_instance is best_agent:
+                    return key, best_agent, confidence
         
         return None, None, 0.0 

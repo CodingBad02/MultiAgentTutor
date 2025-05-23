@@ -1,16 +1,18 @@
 {
-  "functions": {
-    "app/main.py": {
-      "runtime": "python3.9"
+  "version": 2,
+  "builds": [
+    {
+      "src": "app/main.py",
+      "use": "@vercel/python"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/app/main.py"
+      "dest": "app/main.py"
     }
   ],
   "env": {
-    "PYTHONPATH": "/var/task"
+    "APP_MODULE": "app.main:app"
   }
-} 
+}

@@ -120,18 +120,45 @@ Always aim to educate, not just provide answers. Show your work and explain your
                 # Use function calling with tools
                 self.agent_logger.logger.info("🔧 Using Gemini with function calling")
                 
-                response = self.model.generate_content(
-                    full_prompt,
-                    tools=[{"function_declarations": tool_schemas}]
-                )
-                
-                # Log the raw response structure
-                self.agent_logger.logger.info(f"📋 Response candidates: {len(response.candidates) if response.candidates else 0}")
-                if response.candidates and response.candidates[0].content.parts:
-                    self.agent_logger.logger.info(f"📋 Response parts: {len(response.candidates[0].content.parts)}")
-                
-                # Process function calls if any
-                final_response = self._process_function_calls(response, task)
+                try:
+                    # Create tools configuration
+                    tools_config = [{"function_declarations": tool_schemas}]
+                    
+                    # Make the API call with proper tools configuration
+                    response = self.model.generate_content(
+                        full_prompt,
+                        tools=tools_config
+                    )
+                    
+                    # Log the raw response structure
+                    self.agent_logger.logger.info(f"📋 Response candidates: {len(response.candidates) if response.candidates else 0}")
+                    if response.candidates and response.candidates[0].content.parts:
+                        self.agent_logger.logger.info(f"📋 Response parts: {len(response.candidates[0].content.parts)}")
+                    
+                    # Process function calls if any
+                    final_response = self._process_function_calls(response, task)
+                    
+                except Exception as tools_error:
+                    self.agent_logger.log_error(tools_error, "using tools with Gemini")
+                    # Fallback to no tools if there's an issue
+                    self.agent_logger.logger.warning("🔄 Falling back to no-tools mode")
+                    response = self.model.generate_content(full_prompt)
+                    final_response = response.text
+                    self.agent_logger.log_gemini_response(final_response)
+                    
+                    execution_time = (time.time() - start_time) * 1000
+                    return AgentResponse(
+                        content=final_response,
+                        confidence=0.7,  # Lower confidence without tools
+                        sources=["Math Agent", "Gemini 2.0 Flash"],
+                        execution_time_ms=execution_time,
+                        metadata={
+                            "agent": "Math Agent",
+                            "tools_available": self.get_available_tools(),
+                            "tools_error": str(tools_error),
+                            "fallback_mode": True
+                        }
+                    )
             else:
                 # Fallback without tools
                 self.agent_logger.logger.info("🔧 Using Gemini without tools (fallback)")

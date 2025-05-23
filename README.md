@@ -1,187 +1,186 @@
 # 🤖 Multi-Agent AI Tutor System
 
-A sophisticated AI tutoring system built with Google's Agent Development Kit (ADK) principles, featuring specialized agents for different subjects, dynamic Gemini-based routing, and comprehensive tool integration.
+A smart AI tutoring system with specialized agents for different subjects, powered by Google Gemini. The system uses a coordinator agent that intelligently routes questions to specialist agents (Math, Physics) which can utilize tools like equation solvers and formula lookups to provide accurate, educational responses.
 
-## ✨ Features
+## 🧠 System Architecture
 
-- **🎯 Dynamic Routing**: Intelligent Gemini-powered routing to specialist agents
-- **🔧 Tool Integration**: Equation solving, formula lookup, and advanced calculations
-- **📊 Comprehensive Logging**: Detailed execution tracking and debugging
-- **⚡ Fast Performance**: Optimized with execution timing and caching
-- **🌐 Production Ready**: Deployed on Railway/Vercel with proper CORS and health checks
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Tutor Agent    │───▶│   Math Agent    │───▶│ Equation Solver │
-│  (Coordinator)  │    │   (Specialist)  │    │ Calculator Tool │
-└─────────────────┘    └─────────────────┘    │ Formula Lookup  │
-         │                                     └─────────────────┘
-         ▼
-┌─────────────────┐    ┌─────────────────┐
-│ Physics Agent   │───▶│ Formula Lookup  │
-│ (Specialist)    │    │ Calculator Tool │
-└─────────────────┘    └─────────────────┘
+```mermaid
+graph TD
+    User["👤 User"] -->|"Asks Question"| API["🌐 API Endpoint"];
+    API -->|"Routes Request"| Tutor["🎓 Tutor Agent\n(Coordinator)"];
+    Tutor -->|"Routes Math\nQuestions"| Math["🔢 Math Agent"];
+    Tutor -->|"Routes Physics\nQuestions"| Physics["⚛️ Physics Agent"];
+    Math -->|"Uses"| EqSolver["⚖️ Equation Solver"];
+    Math -->|"Uses"| MathFormula["📚 Formula Lookup"];
+    Physics -->|"Uses"| PhysicsFormula["📊 Formula Lookup"];
+    Math -->|"Responds"| API;
+    Physics -->|"Responds"| API;
+    API -->|"Delivers Answer"| User;
 ```
 
-## 🚀 Quick Start
+## ✨ Key Features
+
+- **🧠 Intelligent Routing**: Automatically directs questions to the right specialist
+- **🔧 Tool Integration**: Uses specialized tools for solving equations and looking up formulas
+- **🚀 Fast & Efficient**: Optimized for quick responses and low latency
+- **🌐 Production Ready**: Deployed on Vercel for reliable access
+
+## 🚀 Quick Setup
 
 ### Local Development
 
-1. **Clone and Setup**:
-   ```bash
-   git clone <your-repo>
-   cd MultiAgentTutor
-   pip install -r requirements.txt
-   ```
+```bash
+# Clone and setup
+git clone https://github.com/yourusername/MultiAgentTutor.git
+cd MultiAgentTutor
+pip install -r requirements.txt
 
-2. **Environment Variables**:
-   ```bash
-   cp .env.example .env
-   # Add your GEMINI_API_KEY to .env
-   ```
+# Configure environment
+cp .env.example .env
+# Add your GEMINI_API_KEY to .env
 
-3. **Run the Server**:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-
-4. **Test the System**:
-   ```bash
-   curl -X POST "http://localhost:8000/ask" \
-     -H "Content-Type: application/json" \
-     -d '{"query": "Solve 2x + 5 = 15"}'
-   ```
+# Run the server
+uvicorn app.main:app --reload --port 8090
+```
 
 ### 🌐 Deployment
 
-**For production deployment, see [DEPLOYMENT.md](DEPLOYMENT.md)**
+The system is deployed on Vercel at: https://multi-agent-tutor.vercel.app
 
-Quick Railway deployment:
-1. Push to GitHub
-2. Connect to Railway
-3. Set `GEMINI_API_KEY` environment variable
-4. Deploy automatically!
+Key environment variables:
+- `GEMINI_API_KEY`: Your Google Gemini API key
 
-## 📚 API Endpoints
+## 🔌 API Reference
+
+### Main Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | System information and features |
-| `/health` | GET | Health check endpoint |
-| `/ask` | POST | Main tutoring endpoint |
-| `/ask_direct/{agent}` | POST | Direct agent access |
-| `/agents` | GET | List available agents |
-| `/routing_info` | POST | Debug routing decisions |
+| `/ask` | POST | Main endpoint - routes to appropriate specialist |
+| `/ask/{agent_type}` | POST | Direct access to specific agent (math/physics) |
+| `/agents` | GET | List available specialist agents |
+| `/health` | GET | System health check |
 
 ### Example Usage
 
-**Solve an Equation**:
 ```bash
-curl -X POST "/ask" -d '{"query": "Solve 2x + 5 = 15"}'
+# Ask any question (auto-routing)
+curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Solve 2x + 5 = 15"}'
+
+# Ask math specialist directly
+curl -X POST "https://multi-agent-tutor.vercel.app/ask/math" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is the quadratic formula?"}'
+
+# Ask physics specialist directly
+curl -X POST "https://multi-agent-tutor.vercel.app/ask/physics" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is the formula for kinetic energy?"}'
 ```
 
-**Get a Formula**:
+## 🧠 User Journey
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant API as API Endpoint
+    participant Tutor as Tutor Agent
+    participant Math as Math Agent
+    participant Physics as Physics Agent
+    participant Tools as Specialized Tools
+    
+    User->>API: Asks a question
+    API->>Tutor: Routes request
+    
+    alt Math Question
+        Tutor->>Math: Delegates to Math Agent
+        Math->>Tools: Uses appropriate tool (if needed)
+        Tools-->>Math: Returns tool result
+        Math-->>API: Provides educational response
+    else Physics Question
+        Tutor->>Physics: Delegates to Physics Agent
+        Physics->>Tools: Uses appropriate tool (if needed)
+        Tools-->>Physics: Returns tool result
+        Physics-->>API: Provides educational response
+    end
+    
+    API-->>User: Delivers formatted answer
+```
+
+## 🧩 System Components
+
+### Intelligent Agents
+
+- **🎓 Tutor Agent**: Analyzes questions and routes to specialists
+- **🔢 Math Agent**: Handles algebra, calculus, and mathematical concepts
+- **⚛️ Physics Agent**: Specializes in mechanics, electricity, and physics concepts
+
+### Specialized Tools
+
+- **⚖️ Equation Solver**: Solves algebraic equations step-by-step
+- **📚 Formula Lookup**: Retrieves mathematical and physics formulas
+
+### Technical Implementation
+
+- Built using Python and FastAPI for high-performance API handling
+- Powered by Google Gemini for intelligent reasoning
+- Deployed on Vercel for reliable access
+- Implements tool-augmented agents based on ADK principles
+
+## 💡 Usage Examples
+
+### Math Problems
+
+**Input**: "Solve the equation 3x + 7 = 22"
+
+**Response**:
+```
+To solve 3x + 7 = 22:
+1. Subtract 7 from both sides: 3x = 15
+2. Divide both sides by 3: x = 5
+
+Therefore, x = 5 is the solution.
+```
+
+### Physics Concepts
+
+**Input**: "What is the formula for kinetic energy?"
+
+**Response**:
+```
+The formula for kinetic energy is:
+
+KE = ½mv²
+
+Where:
+- KE is kinetic energy in Joules (J)
+- m is mass in kilograms (kg)
+- v is velocity in meters per second (m/s)
+
+This formula shows that kinetic energy increases with mass, but increases with the square of velocity.
+```
+
+## 🧪 Testing and Verification
+
+Test the deployed application with these commands:
+
 ```bash
-curl -X POST "/ask" -d '{"query": "What is the formula for kinetic energy?"}'
+# Health check
+curl https://multi-agent-tutor.vercel.app/health
+
+# Math question
+curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Solve x^2 - 9 = 0"}'
+
+# Physics question
+curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is Newton's second law?"}'
 ```
-
-**Physics Problem**:
-```bash
-curl -X POST "/ask" -d '{"query": "Calculate the force if mass is 5kg and acceleration is 2m/s²"}'
-```
-
-## 🔧 System Components
-
-### Agents
-
-- **🎯 Tutor Agent**: Main coordinator with Gemini-based routing
-- **🔢 Math Agent**: Specialized for equations, calculations, formulas
-- **⚡ Physics Agent**: Specialized for physics concepts and formulas
-
-### Tools
-
-- **🧮 Calculator**: Advanced mathematical calculations
-- **⚖️ Equation Solver**: Algebraic equation solving
-- **📖 Formula Lookup**: Math and physics formula database
-
-### Features
-
-- **📊 Comprehensive Logging**: Track every operation with detailed logs
-- **⏱️ Execution Timing**: Monitor performance and response times
-- **🎯 Dynamic Routing**: Gemini decides the best specialist for each query
-- **🔧 Tool Calling**: Automatic tool selection and execution
-- **🌐 Production Ready**: CORS, health checks, environment configuration
-
-## 🧪 Testing Your Deployment
-
-Use the provided test script:
-```bash
-python deployment_test.py https://your-app.railway.app
-```
-
-This will test:
-- ✅ Health checks
-- ✅ Equation solving with tools
-- ✅ Formula lookup with tools
-- ✅ Agent routing and responses
-
-## 🔍 Logs and Debugging
-
-The system provides detailed logging:
-
-```
-🎯 ROUTING DECISION
-   Query: 'Solve 2x + 5 = 15'
-   Action: delegate
-   Target: Math Tutor
-   Reasoning: This is an algebraic equation
-
-🤖 MATH TUTOR STARTED
-   Processing: 'Solve 2x + 5 = 15'
-
-🔧 Available tools: equation_solver, calculator, formula_lookup
-
-📞 FUNCTION CALL DETECTED
-   Function: equation_solver
-   Arguments: {'equation': '2x + 5 = 15'}
-
-⚡ TOOL CALL: equation_solver
-   Arguments: {'equation': '2x + 5 = 15'}
-   Result: [5.0]
-
-✅ MATH TUTOR COMPLETED
-   Execution time: 5234.56ms
-   Confidence: 0.90
-```
-
-## 🔐 Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GEMINI_API_KEY` | Google Gemini API key | ✅ |
-| `ENVIRONMENT` | Deployment environment | Optional |
-| `PORT` | Server port (Railway) | Optional |
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test locally
-5. Submit a pull request
-
-## 📄 License
-
-MIT License - see LICENSE file for details.
-
-## 🆘 Support
-
-- **Issues**: Use GitHub Issues for bugs and feature requests
-- **Deployment**: See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment guides
-- **Testing**: Use `deployment_test.py` to verify your deployment works correctly
 
 ---
 
-Built with ❤️ using Google Gemini 2.0 Flash and FastAPI
+Built with Google Gemini 2.0 Flash and FastAPI

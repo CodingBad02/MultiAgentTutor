@@ -6,6 +6,7 @@ from .agent_registry import AgentRegistry
 from .routing_functions import get_routing_function_declarations, get_routing_system_prompt
 from ..utils.logger import AgentLogger
 import google.generativeai as genai
+import google.generativeai.types as gapic_types
 
 
 class TutorAgent(BaseAgent):
@@ -117,9 +118,14 @@ Be decisive and choose the most appropriate routing option."""
             self.agent_logger.log_gemini_request(routing_prompt)
             
             # Use Gemini with function calling to make the decision
+            # Create tools configuration using explicit types
+            function_declarations = [gapic_types.FunctionDeclaration(**schema) for schema in routing_functions]
+            # Ensure we only create a Tool if there are declarations
+            tools_list = [gapic_types.Tool(function_declarations=function_declarations)] if function_declarations else []
+
             response = self.routing_model.generate_content(
                 routing_prompt,
-                tools=[{"function_declarations": routing_functions}]
+                tools=tools_list
             )
             
             self.agent_logger.logger.info(f"📋 Routing response candidates: {len(response.candidates) if response.candidates else 0}")

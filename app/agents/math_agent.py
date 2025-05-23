@@ -7,6 +7,7 @@ from ..tools.calculator_tool import CalculatorTool
 from ..tools.equation_solver_tool import EquationSolverTool
 from ..tools.formula_lookup_tool import FormulaLookupTool
 from ..utils.logger import AgentLogger
+import google.generativeai.types as gapic_types
 
 
 class MathAgent(BaseAgent):
@@ -121,13 +122,15 @@ Always aim to educate, not just provide answers. Show your work and explain your
                 self.agent_logger.logger.info("🔧 Using Gemini with function calling")
                 
                 try:
-                    # Create tools configuration
-                    tools_config = [{"function_declarations": tool_schemas}]
+                    # Create tools configuration using explicit types
+                    function_declarations = [gapic_types.FunctionDeclaration(**schema) for schema in tool_schemas]
+                    # Ensure we only create a Tool if there are declarations
+                    tools_list = [gapic_types.Tool(function_declarations=function_declarations)] if function_declarations else []
                     
                     # Make the API call with proper tools configuration
                     response = self.model.generate_content(
                         full_prompt,
-                        tools=tools_config
+                        tools=tools_list
                     )
                     
                     # Log the raw response structure

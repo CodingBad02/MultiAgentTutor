@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple, Optional
 from .base_agent import BaseAgent
 from .math_agent import MathAgent
 from .physics_agent import PhysicsAgent
+from .biology_agent import BiologyAgent
 
 
 class AgentRegistry:
@@ -20,10 +21,10 @@ class AgentRegistry:
         # Create and register agents
         self.register_agent("math", MathAgent())
         self.register_agent("physics", PhysicsAgent())
+        self.register_agent("biology", BiologyAgent())
         
         # Could add more agents here:
         # self.register_agent("chemistry", ChemistryAgent())
-        # self.register_agent("biology", BiologyAgent())
         # self.register_agent("history", HistoryAgent())
     
     def register_agent(self, key: str, agent: BaseAgent):

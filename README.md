@@ -10,11 +10,13 @@ graph TD
     API -->|"Routes Request"| Tutor["🎓 Tutor Agent\n(Coordinator)"];
     Tutor -->|"Routes Math\nQuestions"| Math["🔢 Math Agent"];
     Tutor -->|"Routes Physics\nQuestions"| Physics["⚛️ Physics Agent"];
+    Tutor -->|"Routes Biology\nQuestions"| Biology["🧀 Biology Agent"];
     Math -->|"Uses"| EqSolver["⚖️ Equation Solver"];
     Math -->|"Uses"| MathFormula["📚 Formula Lookup"];
     Physics -->|"Uses"| PhysicsFormula["📊 Formula Lookup"];
     Math -->|"Responds"| API;
     Physics -->|"Responds"| API;
+    Biology -->|"Responds"| API;
     API -->|"Delivers Answer"| User;
 ```
 
@@ -50,6 +52,8 @@ The system is deployed on Vercel at: https://multi-agent-tutor.vercel.app
 
 Key environment variables:
 - `GEMINI_API_KEY`: Your Google Gemini API key
+- `REDIS_URL`: Redis connection URL for persistent sessions
+- `VERCEL`: Set to '1' to enable Vercel-specific optimizations
 
 ## 🔌 API Reference
 
@@ -58,7 +62,7 @@ Key environment variables:
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/ask` | POST | Main endpoint - routes to appropriate specialist |
-| `/ask/{agent_type}` | POST | Direct access to specific agent (math/physics) |
+| `/ask/{agent_type}` | POST | Direct access to specific agent (math/physics/biology) |
 | `/agents` | GET | List available specialist agents |
 | `/session/{session_id}` | GET | Get information about a specific session |
 | `/session/clear/{session_id}` | POST | Clear history for a specific session |
@@ -99,14 +103,18 @@ curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
 sequenceDiagram
     actor User
     participant API as API Endpoint
+    participant Redis as Redis Storage
     participant Session as Session Manager
     participant Tutor as Tutor Agent
     participant Math as Math Agent
     participant Physics as Physics Agent
+    participant Biology as Biology Agent
     participant Tools as Specialized Tools
     
     User->>API: Asks a question
     API->>Session: Retrieves context history
+    Session->>Redis: Fetches session data
+    Redis-->>Session: Returns stored data
     Session-->>API: Returns conversation history
     API->>Tutor: Routes request with context
     
@@ -120,12 +128,16 @@ sequenceDiagram
         Physics->>Tools: Uses appropriate tool (if needed)
         Tools-->>Physics: Returns tool result
         Physics-->>API: Provides educational response
+    else Biology Question
+        Tutor->>Biology: Delegates to Biology Agent
+        Biology-->>API: Provides educational response
     end
     
     API->>Session: Stores interaction
+    Session->>Redis: Persists session data
     API-->>User: Delivers formatted answer
     
-    Note over User,Session: Subsequent questions maintain context
+    Note over User,Redis: Persistent context across serverless functions
 ```
 
 ## 🧩 System Components
@@ -135,6 +147,7 @@ sequenceDiagram
 - **🎓 Tutor Agent**: Analyzes questions and routes to specialists
 - **🔢 Math Agent**: Handles algebra, calculus, and mathematical concepts
 - **⚛️ Physics Agent**: Specializes in mechanics, electricity, and physics concepts
+- **🧀 Biology Agent**: Explains cellular biology, genetics, and physiological processes
 
 ### Specialized Tools
 
@@ -144,6 +157,7 @@ sequenceDiagram
 ### Session Management
 
 - **💬 Context History**: Maintains conversation memory across interactions
+- **💾 Redis Storage**: Persistent session storage for serverless environments
 - **🌐 Session Tracking**: Uses unique session IDs to manage conversations
 - **⏰ Session Expiry**: Automatically expires inactive sessions after 1 hour
 
@@ -192,6 +206,27 @@ Certainly! Looking at the kinetic energy formula KE = ½mv²:
 The squared velocity term means that doubling the speed quadruples the kinetic energy!
 ```
 
+### Biology Questions
+
+**Input**: "What is the difference between mitosis and meiosis?"
+
+**Response**:
+```
+Mitosis and meiosis are both types of cell division, but they have different purposes and outcomes:
+
+Mitosis:
+- Produces two identical daughter cells
+- Maintains chromosome number (diploid to diploid)
+- Used for growth, repair, and asexual reproduction
+- One division cycle
+
+Meiosis:
+- Produces four genetically diverse cells
+- Reduces chromosome number (diploid to haploid)
+- Used for sexual reproduction (gamete formation)
+- Two division cycles with crossing over
+```
+
 ### Physics Concepts
 
 **Input**: "What is the formula for kinetic energy?"
@@ -226,7 +261,12 @@ curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
 # Physics question
 curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
   -H "Content-Type: application/json" \
-  -d '{"query": "What is Newton's second law?"}'
+  -d '{"query": "What is Newtons second law?"}'
+
+# Biology question
+curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Explain how DNA replication works"}'
 
 # Test context memory (multi-turn conversation)
 curl -X POST "https://multi-agent-tutor.vercel.app/ask" \
